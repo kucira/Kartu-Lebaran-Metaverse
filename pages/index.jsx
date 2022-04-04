@@ -1,14 +1,14 @@
-import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-import { Program, web3 } from "@project-serum/anchor";
 import dynamic from "next/dynamic";
 
 import {
   checkIfWalletConnected,
   connectWallet,
-  getProvider,
+  getProgram,
+  baseAccount,
+  SystemProgram,
+  user,
+  sendSol,
 } from "../utils/helpers";
-import idl from "../idl.json";
-import kp from "../utils/keypair.json";
 
 import { useEffect, useState } from "react";
 
@@ -24,17 +24,6 @@ const ConnectWalletButton = dynamic(
   { loading: () => <p>...</p> }
 );
 
-// SystemProgram is a reference to the Solana runtime!
-const { SystemProgram } = web3;
-
-// Create a keypair for the account that will hold the GIF data.
-const arr = Object.values(kp._keypair.secretKey);
-const secret = new Uint8Array(arr);
-const baseAccount = web3.Keypair.fromSecretKey(secret);
-
-// Get our program's id from the IDL file.
-const programID = new PublicKey(idl.metadata.address);
-
 const handleLoadWallet = (setWalletAddress) => {
   const onLoad = async () => {
     await checkIfWalletConnected(setWalletAddress);
@@ -46,8 +35,7 @@ const handleLoadWallet = (setWalletAddress) => {
 
 const getGifList = async (setGifList) => {
   try {
-    const provider = getProvider();
-    const program = new Program(idl, programID, provider);
+    const program = await getProgram();
     const account = await program.account.baseAccount.fetch(
       baseAccount.publicKey
     );
@@ -62,13 +50,12 @@ const getGifList = async (setGifList) => {
 
 const createGifAccount = async (setGifList) => {
   try {
-    const provider = getProvider();
-    const program = new Program(idl, programID, provider);
+    const program = await getProgram();
     console.log("ping");
     await program.rpc.startStuffOff({
       accounts: {
         baseAccount: baseAccount.publicKey,
-        user: provider.wallet.publicKey,
+        user: user.publicKey,
         systemProgram: SystemProgram.programId,
       },
       signers: [baseAccount],
@@ -105,13 +92,12 @@ const sendGif = async (formData, setGifList) => {
     document.getElementsByName("inputGif").value = "";
 
     try {
-      const provider = getProvider();
-      const program = new Program(idl, programID, provider);
+      const program = await getProgram();
 
       await program.rpc.addGif(inputGif, {
         accounts: {
           baseAccount: baseAccount.publicKey,
-          user: provider.wallet.publicKey,
+          user: user.publicKey,
         },
       });
       await sendSol(inputWallet, inputSol);
@@ -128,68 +114,13 @@ const sendGif = async (formData, setGifList) => {
 
 const voteData = async (link, owner) => {
   // call program/contract to vote data
-  const provider = getProvider();
-  const program = new Program(idl, programID, provider);
+  const program = await getProgram();
   await program.rpc.voteData(link);
-};
-
-const sendSol = async (recipient, amount) => {
-  // send sol to owner of image
-  try {
-    // Add transfer instruction to transaction
-    const provider = getProvider();
-    const { connection, wallet } = provider;
-
-    // Create Simple Transaction
-    let tx = new web3.Transaction();
-
-    // Add an instruction to execute
-    // transfer sol with common examples will bring error Uncaught (in promise) TypeError: unexpected type, use Uint8Array
-    // fix this issue by using this function
-    // https://dev.to/qpwo/how-to-sign-anchor-transactions-with-phantom-or-other-wallets-in-the-browser-845
-    tx.add(
-      web3.SystemProgram.transfer({
-        fromPubkey: new PublicKey(provider.wallet.publicKey.toString()),
-        toPubkey: new PublicKey(recipient.toString()),
-        lamports: LAMPORTS_PER_SOL * +amount,
-      })
-    );
-
-    tx.feePayer = wallet.publicKey;
-    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    const signedTx = await wallet.signTransaction(tx);
-    const txId = await connection.sendRawTransaction(signedTx.serialize());
-    const signature = await connection.confirmTransaction(txId);
-    console.log(signature, "signature");
-  } catch (error) {
-    console.log(error);
-  }
 };
 
 const App = () => {
   const [walletAddress, setWalletAddress] = useState(null);
   const [gifList, setGifList] = useState(null);
-
-  const renderConnectedContainer = () => {
-    if (!gifList) {
-      return (
-        <InitializeButton
-          createGifAccount={createGifAccount}
-          setGifList={setGifList}
-        />
-      );
-    }
-    return <FormCard sendGif={sendGif} sendSol={sendSol} gifList={gifList} />;
-  };
-
-  const renderConnectButton = () => {
-    return (
-      <ConnectWalletButton
-        connectWallet={connectWallet}
-        setWalletAddress={setWalletAddress}
-      />
-    );
-  };
 
   useEffect(() => {
     handleLoadWallet(setWalletAddress);
@@ -208,9 +139,28 @@ const App = () => {
             <p className="sub-text">
               Kirim Kartu Lebaran dan THR di dunia metaverse ✨
             </p>
-            {!walletAddress && renderConnectButton()}
+            {!walletAddress && (
+              <ConnectWalletButton
+                connectWallet={connectWallet}
+                setWalletAddress={setWalletAddress}
+              />
+            )}
           </div>
-          {walletAddress && renderConnectedContainer()}
+          {walletAddress && !gifList && (
+            <InitializeButton
+              createGifAccount={createGifAccount}
+              setGifList={setGifList}
+            />
+          )}
+
+          {walletAddress && gifList && (
+            <FormCard
+              sendGif={sendGif}
+              sendSol={sendSol}
+              gifList={gifList}
+              setGifList={setGifList}
+            />
+          )}
         </div>
       </div>
     </div>

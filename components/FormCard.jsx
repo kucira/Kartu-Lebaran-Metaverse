@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 
 const Cards = dynamic(() => import("./Cards"));
 
-export default function FormCard({ sendGif, sendSol, gifList }) {
+export default function FormCard({ sendGif, sendSol, gifList, setGifList }) {
   return (
     <div className="connected-container">
       <form
